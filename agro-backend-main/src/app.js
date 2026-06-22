@@ -16,6 +16,13 @@ app.use(cors());
 
 app.use(express.json());
 
+
+app.get("/api",(req,res) => {
+  res.send("hii their")
+  console.log("the backend is here")
+})
+
+
 app.use("/api/auth", authRoutes);
 
 app.use("/api/farmers", farmerRoutes);
