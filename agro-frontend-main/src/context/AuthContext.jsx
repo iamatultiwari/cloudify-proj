@@ -5,10 +5,9 @@ export const AuthContext = createContext();
 
 const AuthProvider = ({ children }) => {
   const [user, setUser] = useState(null);
-
   const [loading, setLoading] = useState(true);
 
-  // ================= GET PROFILE =================
+  // GET PROFILE
 
   const getProfile = async () => {
     try {
@@ -16,11 +15,16 @@ const AuthProvider = ({ children }) => {
 
       setUser(data.user);
     } catch (error) {
-      console.log(error);
+      console.log("PROFILE ERROR:", error.response?.data);
+
+      localStorage.removeItem("token");
+      setUser(null);
     } finally {
       setLoading(false);
     }
   };
+
+  // CHECK TOKEN ON APP LOAD
 
   useEffect(() => {
     const token = localStorage.getItem("token");
@@ -32,40 +36,58 @@ const AuthProvider = ({ children }) => {
     }
   }, []);
 
-  // ================= LOGIN =================
+  // LOGIN
 
   const login = async (formData) => {
-    const { data } = await API.post(
-      "/auth/login",
-      formData
-    );
+    try {
+      console.log("LOGIN DATA:", formData);
 
-    localStorage.setItem(
-      "token",
-      data.token
-    );
+      const { data } = await API.post(
+        "/auth/login",
+        formData
+      );
 
-    setUser(data.user);
+      console.log("LOGIN RESPONSE:", data);
 
-    return data;
+      localStorage.setItem("token", data.token);
+
+      setUser(data.user);
+
+      return data;
+    } catch (error) {
+      console.log(
+        "LOGIN ERROR:",
+        error.response?.data
+      );
+
+      throw error;
+    }
   };
 
-  // ================= REGISTER =================
+  // REGISTER
 
   const register = async (formData) => {
-    const { data } = await API.post(
-      "/auth/register",
-      formData
-    );
+    try {
+      const { data } = await API.post(
+        "/auth/register",
+        formData
+      );
 
-    return data;
+      return data;
+    } catch (error) {
+      console.log(
+        "REGISTER ERROR:",
+        error.response?.data
+      );
+
+      throw error;
+    }
   };
 
-  // ================= LOGOUT =================
+  // LOGOUT
 
   const logout = () => {
     localStorage.removeItem("token");
-
     setUser(null);
   };
 
