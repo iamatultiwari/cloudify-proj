@@ -10,8 +10,7 @@ import {
   IndianRupee, 
   Calculator,
   ShieldCheck,
-  Building2,
-  Trash2
+  Building2
 } from "lucide-react";
 import API from "../../services/api";
 import ProductRow from "../../components/invoices/ProductRow";
@@ -24,7 +23,7 @@ const CreateInvoice = () => {
   const [loading, setLoading] = useState(false);
   const [formData, setFormData] = useState({
     farmerId: "",
-    billingType: "cash",
+    billingType: "cash", // Maps to Retail Cash
     products: [
       {
         product: "",
@@ -74,9 +73,17 @@ const CreateInvoice = () => {
       const p = productsList.find(prod => prod._id === item.product);
       if (p) {
         let rate = 0;
-        if (formData.billingType === "credit") rate = p.creditRate;
-        else if (formData.billingType === "cash") rate = p.cashRate;
-        else if (formData.billingType === "wholesale") rate = p.wholesaleRate;
+        
+        // Dynamic conditional checks evaluating all 4 matrix tiers from legacy system
+        if (formData.billingType === "cash") {
+          rate = p.cashRate || 0; // Cash Price-Retail
+        } else if (formData.billingType === "credit") {
+          rate = p.creditRate || 0; // Credit Price-Retail
+        } else if (formData.billingType === "wholesale") {
+          rate = p.wholesaleRate || 0; // Cash Price-Wholesale
+        } else if (formData.billingType === "wholesale_credit") {
+          rate = p.creditWholesaleRate || 0; // Credit Price-Wholesale
+        }
 
         const lineTotal = rate * (item.quantity || 0);
         const lineGST = (lineTotal * (p.gstRate || 0)) / 100;
@@ -134,12 +141,28 @@ const CreateInvoice = () => {
     } catch (error) {
       toast.error(error.response?.data?.message || "Failed to create invoice");
     } finally {
-      setLoading(false);
+      loading(false);
     }
   };
 
-  const inputClasses = "w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-gray-50/50 text-sm";
+  const inputClasses = "w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-gray-50/50 text-sm appearance-none cursor-pointer";
   const labelClasses = "block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2 ml-1";
+
+  // Helper helper config to style the context shield badge cleanly
+  const getBillingBadgeProps = () => {
+    if (formData.billingType.includes("credit")) {
+      return {
+        wrapper: "bg-rose-50 border-rose-100 text-rose-700",
+        text: "This handles custom outstanding deferred limits and will modify ledger records."
+      };
+    }
+    return {
+      wrapper: "bg-emerald-50 border-emerald-100 text-emerald-700",
+      text: "This processes as an immediate settlement direct transaction point."
+    };
+  };
+
+  const badgeProps = getBillingBadgeProps();
 
   return (
     <div className="space-y-6 md:space-y-8">
@@ -178,14 +201,14 @@ const CreateInvoice = () => {
                   >
                     <option value="">Choose Farmer</option>
                     {farmers?.map((f) => (
-                      <option key={f._id} value={f._id}>{f.name} ({f.village})</option>
+                      <option key={f._id} value={f._id}>{f.name} ({f.village || "No Area Location"})</option>
                     ))}
                   </select>
                 </div>
               </div>
 
               <div>
-                <label className={labelClasses}>Billing Type</label>
+                <label className={labelClasses}>Billing Type Matrix</label>
                 <div className="relative group">
                   <CreditCard className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-green-600 transition-colors" size={18} />
                   <select
@@ -193,9 +216,10 @@ const CreateInvoice = () => {
                     onChange={(e) => setFormData({ ...formData, billingType: e.target.value })}
                     className={inputClasses}
                   >
-                    <option value="cash">Cash Payment</option>
-                    <option value="credit">Credit (Baki)</option>
-                    <option value="wholesale">Wholesale Rate</option>
+                    <option value="cash">Retail - Cash Price</option>
+                    <option value="credit">Retail - Credit Price</option>
+                    <option value="wholesale">Wholesale - Cash Price</option>
+                    <option value="wholesale_credit">Wholesale - Credit Price</option>
                   </select>
                 </div>
               </div>
@@ -277,11 +301,10 @@ const CreateInvoice = () => {
               </div>
             </div>
 
-            <div className={`mt-8 sm:mt-10 p-4 rounded-2xl flex items-start sm:items-center gap-3 border ${formData.billingType === 'credit' ? 'bg-red-50 border-red-100 text-red-700' : 'bg-green-50 border-green-100 text-green-700'}`}>
-              <ShieldCheck size={20} className="shrink-0 mt-0.5 sm:mt-0" />
+            <div className={`mt-8 sm:mt-10 p-4 rounded-2xl flex items-start gap-3 border ${badgeProps.wrapper}`}>
+              <ShieldCheck size={20} className="shrink-0 mt-0.5" />
               <div className="text-xs font-bold leading-relaxed">
-                Billing mode set to <span className="uppercase">{formData.billingType}</span>. 
-                {formData.billingType === 'credit' ? ' This will update the farmer\'s outstanding balance.' : ' This will be recorded as a direct cash sale.'}
+                Billing configuration set to <span className="uppercase font-black">{formData.billingType.replace('_', ' ')}</span>. {badgeProps.text}
               </div>
             </div>
 
