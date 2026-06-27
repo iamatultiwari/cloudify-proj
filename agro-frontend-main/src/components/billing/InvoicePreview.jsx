@@ -1,13 +1,32 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { ShieldCheck, Leaf, MapPin, Phone, Receipt } from 'lucide-react';
 
 const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
   const selectedFarmer = farmers.find(f => f._id === formData.farmerId);
-  const currentDate = new Date().toLocaleDateString('en-IN', {
-    day: '2-digit',
-    month: 'long',
-    year: 'numeric'
-  });
+  
+  // Track date changes locally to force instant visual updates even if the parent state delays
+  const initialDateString = formData.createdAt 
+    ? new Date(formData.createdAt).toISOString().split('T')[0] 
+    : new Date().toISOString().split('T')[0];
+    
+  const [localDate, setLocalDate] = useState(initialDateString);
+
+  // Keep local date synchronized if the parent form resets or changes externally
+  useEffect(() => {
+    if (formData.createdAt) {
+      setLocalDate(new Date(formData.createdAt).toISOString().split('T')[0]);
+    }
+  }, [formData.createdAt]);
+
+  // Safe localized due date extraction formatting
+  const formatDueDate = (dateString) => {
+    if (!dateString) return "Pending Selected Date";
+    return new Date(dateString).toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric'
+    });
+  };
 
   return (
     <div className="bg-white rounded-[2rem] shadow-2xl overflow-hidden border border-gray-100 flex flex-col h-full sticky top-8">
@@ -35,8 +54,33 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
           </div>
           <div className="text-right">
             <h2 className="text-3xl font-black text-gray-900 mb-1">INVOICE</h2>
-            <p className="text-xs font-bold text-green-600 uppercase tracking-wider">#{Math.random().toString(36).substr(2, 9).toUpperCase()}</p>
-            <p className="text-[10px] font-bold text-slate-600 uppercase mt-2 tracking-widest">{currentDate}</p>
+            <p className="text-[10px] font-bold text-slate-400 tracking-widest uppercase">Live Screen Preview</p>
+            
+            {/* Cleaned & Responsive Editable Date Layout */}
+            <div className="text-[11px] font-black text-slate-600 uppercase mt-2 tracking-widest flex items-center justify-end gap-1.5">
+              <span className="text-slate-400">DATE:</span>
+              <input 
+                type="date" 
+                className="bg-slate-50 border border-slate-200 text-right font-black text-slate-800 uppercase outline-none focus:border-green-500 focus:ring-2 focus:ring-green-500/10 rounded-xl px-2 py-1 cursor-pointer transition-all"
+                style={{ colorScheme: 'light' }}
+                value={localDate} 
+                onChange={(e) => {
+                  const selectedValue = e.target.value;
+                  setLocalDate(selectedValue); // Instant component re-render
+
+                  // Bubble up modifications to parent state handler if available
+                  if (typeof formData.setFieldValue === 'function') {
+                    formData.setFieldValue("createdAt", selectedValue);
+                  } else if (typeof formData.onChange === 'function') {
+                    formData.onChange({ target: { name: 'createdAt', value: selectedValue } });
+                  } else {
+                    // Raw fallback mutation
+                    formData.createdAt = selectedValue;
+                    if (typeof summary?.recalculate === 'function') summary.recalculate();
+                  }
+                }}
+              />
+            </div>
           </div>
         </div>
 
@@ -47,7 +91,7 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
             {selectedFarmer ? (
               <div className="space-y-1">
                 <p className="text-lg font-bold text-gray-900">{selectedFarmer.name}</p>
-                <p className="text-sm text-slate-700">{selectedFarmer.village}</p>
+                <p className="text-sm text-slate-700">{selectedFarmer.village || selectedFarmer.address}</p>
                 <p className="text-sm text-slate-700">{selectedFarmer.mobileNumber}</p>
               </div>
             ) : (
@@ -58,10 +102,14 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
             <h3 className="text-[10px] font-black text-slate-600 uppercase tracking-[0.2em] mb-4">Payment Info</h3>
             <div className="inline-flex items-center gap-2 px-3 py-1 bg-gray-50 rounded-full mb-2">
               <Receipt size={12} className="text-green-600" />
-              <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">{formData.billingType} RATE</span>
+              <span className="text-[10px] font-black text-slate-800 uppercase tracking-wider">
+                {formData.billingType?.replace("_", " ")} Tier
+              </span>
             </div>
             <p className="text-sm font-bold text-gray-900">
-              {formData.billingType === 'credit' ? 'Due within 30 days' : 'Paid in Cash'}
+              {formData.billingType?.includes('credit') 
+                ? `Due: ${formatDueDate(formData.dueDate)}` 
+                : 'Paid Spot / Immediate'}
             </p>
           </div>
         </div>
@@ -83,16 +131,19 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
                 if (!p) return null;
                 
                 let rate = 0;
-                if (formData.billingType === "credit") rate = p.creditRate;
-                else if (formData.billingType === "cash") rate = p.cashRate;
-                else if (formData.billingType === "wholesale") rate = p.wholesaleRate;
+                if (formData.billingType === "cash") rate = p.cashRate || 0;
+                else if (formData.billingType === "credit") rate = p.creditRate || 0;
+                else if (formData.billingType === "wholesale") rate = p.wholesaleRate || 0;
+                else if (formData.billingType === "wholesale_credit") rate = p.creditWholesaleRate || 0;
+
+                const qty = Number(item.quantity) || 0;
 
                 return (
                   <tr key={idx}>
                     <td className="py-4 text-sm font-bold text-gray-800">{p.productName}</td>
-                    <td className="py-4 text-center text-sm text-slate-700 font-medium">{item.quantity}</td>
-                    <td className="py-4 text-right text-sm text-slate-700 font-medium">₹{rate.toLocaleString()}</td>
-                    <td className="py-4 text-right text-sm font-bold text-gray-800">₹{(rate * item.quantity).toLocaleString()}</td>
+                    <td className="py-4 text-center text-sm text-slate-700 font-medium">{qty}</td>
+                    <td className="py-4 text-right text-sm text-slate-700 font-medium">₹{rate.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
+                    <td className="py-4 text-right text-sm font-bold text-gray-800">₹{(rate * qty).toLocaleString('en-IN', { minimumFractionDigits: 2 })}</td>
                   </tr>
                 );
               })}
@@ -110,16 +161,16 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
           <div className="flex flex-col gap-3 max-w-xs w-full ml-auto">
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">Subtotal</span>
-              <span className="text-sm font-bold text-gray-800">₹{summary.subTotal.toLocaleString()}</span>
+              <span className="text-sm font-bold text-gray-800">₹{summary.subTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="flex justify-between items-center">
               <span className="text-xs font-bold text-slate-600 uppercase tracking-wider">GST (Tax)</span>
-              <span className="text-sm font-bold text-gray-800">₹{summary.totalGST.toLocaleString()}</span>
+              <span className="text-sm font-bold text-gray-800">₹{summary.totalGST.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
             <div className="h-px bg-gray-100 my-1"></div>
             <div className="flex justify-between items-center">
               <span className="text-xs font-black text-green-600 uppercase tracking-widest">Total</span>
-              <span className="text-xl font-black text-gray-900">₹{summary.grandTotal.toLocaleString()}</span>
+              <span className="text-xl font-black text-gray-900">₹{summary.grandTotal.toLocaleString('en-IN', { minimumFractionDigits: 2 })}</span>
             </div>
           </div>
         </div>
@@ -128,8 +179,8 @@ const InvoicePreview = ({ formData, farmers, productsList, summary }) => {
         <div className="mt-12 flex items-center gap-3 p-4 bg-green-50/50 rounded-2xl border border-green-100">
           <ShieldCheck size={20} className="text-green-600 shrink-0" />
           <p className="text-[10px] font-bold text-green-800 leading-relaxed uppercase tracking-tight">
-            This is a computer-generated document. No signature required. 
-            All sales are final as per our terms & conditions.
+            This is a real-time ledger preview projection map. 
+            Final tax distribution matrices calculate directly on commit hook execution.
           </p>
         </div>
       </div>

@@ -7,7 +7,7 @@
 //   return `INV-${Date.now()}-${random}`;
 // };
 
-// export default generateInvoiceNumber;
+
 
 import Invoice from "../models/Invoice.js";
 

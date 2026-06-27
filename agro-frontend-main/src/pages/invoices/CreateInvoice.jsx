@@ -1,328 +1,345 @@
-import { useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { 
-  ArrowLeft, 
-  User, 
-  CreditCard, 
-  ShoppingCart, 
-  Plus, 
-  Receipt, 
-  IndianRupee, 
-  Calculator,
-  ShieldCheck,
-  Building2
-} from "lucide-react";
-import API from "../../services/api";
-import ProductRow from "../../components/invoices/ProductRow";
-import toast from "react-hot-toast";
+
+import React, { useState, useEffect } from "react";
+import axios from "axios";
+import { Trash2, Plus, Receipt, User, Percent, Layers, AlertTriangle } from "lucide-react";
 
 const CreateInvoice = () => {
-  const navigate = useNavigate();
+  // --- STATE MANAGEMENT ---
   const [farmers, setFarmers] = useState([]);
-  const [productsList, setProductsList] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [formData, setFormData] = useState({
-    farmerId: "",
-    billingType: "cash", // Maps to Retail Cash
-    products: [
-      {
-        product: "",
-        quantity: 1,
-      },
-    ],
-  });
+  const [productsPool, setProductsPool] = useState([]);
+  
+  const [selectedFarmerId, setSelectedFarmerId] = useState("");
+  const [billingType, setBillingType] = useState("cash");
+  const [dueDate, setDueDate] = useState("");
+  const [invoiceItems, setInvoiceItems] = useState([
+    { product: "", quantity: 1, selectedRate: 0, gstRate: 0, totalAmount: 0 }
+  ]);
 
-  const [summary, setSummary] = useState({
-    subTotal: 0,
-    totalGST: 0,
-    grandTotal: 0
-  });
+  const [financials, setFinancials] = useState({ subTotal: 0, totalGST: 0, grandTotal: 0 });
+  const [uiFeedback, setUiFeedback] = useState({ loading: false, error: null, success: null });
 
-  const getFarmers = async () => {
-    try {
-      const { data } = await API.get("/farmers");
-      setFarmers(data.farmers);
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  const getProducts = async () => {
-    try {
-      const { data } = await API.get("/products");
-      setProductsList(data.products);
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
+  // --- FETCH INITIAL DROPDOWN DATA ---
   useEffect(() => {
-    getFarmers();
-    getProducts();
+    const fetchDropdownData = async () => {
+      try {
+        const [farmersRes, productsRes] = await Promise.all([
+          axios.get("/api/v1/farmers"),
+          axios.get("/api/v1/products")
+        ]);
+        if (farmersRes.data?.success) setFarmers(farmersRes.data.farmers);
+        if (productsRes.data?.success) setProductsPool(productsRes.data.products);
+      } catch (err) {
+        console.error("Initialization error:", err);
+        setUiFeedback(prev => ({ ...prev, error: "Failed to load master registry list data." }));
+      }
+    };
+    fetchDropdownData();
   }, []);
 
+  // --- RE-CALCULATE FINANCIAL LEDGER DATA ---
   useEffect(() => {
-    calculateTotals();
-  }, [formData, productsList]);
+    let computedSubTotal = 0;
+    let computedTotalGST = 0;
 
-  const calculateTotals = () => {
-    let sub = 0;
-    let gst = 0;
+    const updatedItems = invoiceItems.map(item => {
+      if (!item.product) return item;
 
-    formData.products.forEach(item => {
-      const p = productsList.find(prod => prod._id === item.product);
-      if (p) {
-        let rate = 0;
-        
-        // Dynamic conditional checks evaluating all 4 matrix tiers from legacy system
-        if (formData.billingType === "cash") {
-          rate = p.cashRate || 0; // Cash Price-Retail
-        } else if (formData.billingType === "credit") {
-          rate = p.creditRate || 0; // Credit Price-Retail
-        } else if (formData.billingType === "wholesale") {
-          rate = p.wholesaleRate || 0; // Cash Price-Wholesale
-        } else if (formData.billingType === "wholesale_credit") {
-          rate = p.creditWholesaleRate || 0; // Credit Price-Wholesale
-        }
+      const matchedProduct = productsPool.find(p => p._id === item.product);
+      if (!matchedProduct) return item;
 
-        const lineTotal = rate * (item.quantity || 0);
-        const lineGST = (lineTotal * (p.gstRate || 0)) / 100;
-        
-        sub += lineTotal;
-        gst += lineGST;
-      }
+      // Pure 4-tier client side matrix selection matching backend expectations
+      let rate = 0;
+      if (billingType === "cash") rate = matchedProduct.cashRate || 0;
+      else if (billingType === "credit") rate = matchedProduct.creditRate || 0;
+      else if (billingType === "wholesale") rate = matchedProduct.wholesaleRate || 0;
+      else if (billingType === "wholesale_credit") rate = matchedProduct.creditWholesaleRate || 0;
+
+      const itemTotalRaw = rate * Number(item.quantity || 0);
+      const itemGstRaw = (itemTotalRaw * (matchedProduct.gstRate || 0)) / 100;
+      const finalLineAmount = itemTotalRaw + itemGstRaw;
+
+      computedSubTotal += itemTotalRaw;
+      computedTotalGST += itemGstRaw;
+
+      return {
+        ...item,
+        selectedRate: rate,
+        gstRate: matchedProduct.gstRate || 0,
+        totalAmount: Number(finalLineAmount.toFixed(2))
+      };
     });
 
-    setSummary({
-      subTotal: sub,
-      totalGST: gst,
-      grandTotal: sub + gst
+    // Deep comparison wrapper block to prevent infinite render looping
+    const arraysMatch = JSON.stringify(invoiceItems) === JSON.stringify(updatedItems);
+    if (!arraysMatch) {
+      setInvoiceItems(updatedItems);
+    }
+
+    setFinancials({
+      subTotal: Number(computedSubTotal.toFixed(2)),
+      totalGST: Number(computedTotalGST.toFixed(2)),
+      grandTotal: Number((computedSubTotal + computedTotalGST).toFixed(2))
     });
+  }, [billingType, invoiceItems, productsPool]);
+
+  // --- DYNAMIC ITEM EVENT HANDLERS ---
+  const handleItemRowChange = (index, field, value) => {
+    const values = [...invoiceItems];
+    values[index][field] = value;
+    setInvoiceItems(values);
   };
 
-  const handleProductChange = (index, field, value) => {
-    const updatedProducts = [...formData.products];
-    updatedProducts[index][field] = value;
-    setFormData({ ...formData, products: updatedProducts });
+  const addNewLineItemRow = () => {
+    setInvoiceItems([
+      ...invoiceItems,
+      { product: "", quantity: 1, selectedRate: 0, gstRate: 0, totalAmount: 0 }
+    ]);
   };
 
-  const addProductRow = () => {
-    setFormData({
-      ...formData,
-      products: [...formData.products, { product: "", quantity: 1 }],
-    });
+  const removeLineItemRow = (index) => {
+    if (invoiceItems.length === 1) return;
+    const filteredRows = invoiceItems.filter((_, idx) => idx !== index);
+    setInvoiceItems(filteredRows);
   };
 
-  const removeProductRow = (index) => {
-    if (formData.products.length === 1) return;
-    const updatedProducts = formData.products.filter((_, i) => i !== index);
-    setFormData({ ...formData, products: updatedProducts });
-  };
-
-  const handleSubmit = async (e) => {
+  // --- SUBMIT TRANSACTION TO API BACKEND ---
+  const handleFormSubmission = async (e) => {
     e.preventDefault();
-    if (!formData.farmerId) return toast.error("Please select a farmer");
-    if (formData.products.some(p => !p.product)) return toast.error("Please select products for all rows");
+    setUiFeedback({ loading: true, error: null, success: null });
+
+    // Client-side execution guards
+    if (!selectedFarmerId) {
+      return setUiFeedback({ loading: false, error: "Please select a target farmer profile.", success: null });
+    }
+    const cleanProductsPayload = invoiceItems.filter(item => item.product !== "");
+    if (cleanProductsPayload.length === 0) {
+      return setUiFeedback({ loading: false, error: "Invoice must contain at least one valid line item product assignment.", success: null });
+    }
+
+    const compiledPayload = {
+      farmerId: selectedFarmerId,
+      billingType,
+      products: cleanProductsPayload.map(i => ({ product: i.product, quantity: Number(i.quantity) })),
+      ...(billingType.includes("credit") && dueDate && { dueDate })
+    };
 
     try {
-      setLoading(true);
-      const payload = {
-        farmerId: formData.farmerId,
-        billingType: formData.billingType,
-        products: formData.products.map((item) => ({
-          product: item.product,
-          quantity: Number(item.quantity),
-        })),
-      };
-
-      await API.post("/invoices", payload);
-      toast.success("Invoice Created Successfully");
-      navigate("/invoices");
-    } catch (error) {
-      toast.error(error.response?.data?.message || "Failed to create invoice");
-    } finally {
-      loading(false);
+      const response = await axios.post("/api/v1/invoices/create", compiledPayload);
+      if (response.data?.success) {
+        setUiFeedback({ loading: false, error: null, success: "Invoice processed and ledger recorded cleanly!" });
+        // Clean out state boundaries completely
+        setSelectedFarmerId("");
+        setBillingType("cash");
+        setDueDate("");
+        setInvoiceItems([{ product: "", quantity: 1, selectedRate: 0, gstRate: 0, totalAmount: 0 }]);
+      }
+    } catch (err) {
+      console.error("Submission Failure Context:", err);
+      setUiFeedback({
+        loading: false,
+        error: err.response?.data?.message || "Critical runtime fault execution failure during save actions.",
+        success: null
+      });
     }
   };
-
-  const inputClasses = "w-full pl-10 pr-4 py-3 rounded-2xl border border-gray-100 focus:outline-none focus:ring-2 focus:ring-green-500/20 focus:border-green-500 transition-all bg-gray-50/50 text-sm appearance-none cursor-pointer";
-  const labelClasses = "block text-xs font-bold text-slate-600 uppercase tracking-widest mb-2 ml-1";
-
-  // Helper helper config to style the context shield badge cleanly
-  const getBillingBadgeProps = () => {
-    if (formData.billingType.includes("credit")) {
-      return {
-        wrapper: "bg-rose-50 border-rose-100 text-rose-700",
-        text: "This handles custom outstanding deferred limits and will modify ledger records."
-      };
-    }
-    return {
-      wrapper: "bg-emerald-50 border-emerald-100 text-emerald-700",
-      text: "This processes as an immediate settlement direct transaction point."
-    };
-  };
-
-  const badgeProps = getBillingBadgeProps();
 
   return (
-    <div className="space-y-6 md:space-y-8">
-      {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center gap-4">
-        <Link
-          to="/invoices"
-          className="p-3 bg-white border border-gray-200 rounded-2xl text-slate-800 hover:text-green-600 hover:border-green-200 transition-all shadow-sm w-fit"
-        >
-          <ArrowLeft size={20} />
-        </Link>
-        <div>
-          <div className="flex items-center gap-2 text-green-600 text-xs font-bold uppercase tracking-wider mb-1">
-            <Receipt size={14} />
-            <span>New Billing</span>
+    <div className="min-h-screen bg-slate-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-6xl mx-auto bg-white rounded-xl shadow-md overflow-hidden border border-slate-200">
+        
+        {/* Component Header Banner */}
+        <div className="bg-gradient-to-r from-emerald-600 to-teal-700 p-6 flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <Receipt className="h-8 w-8 text-white" />
+            <h1 className="text-2xl font-bold text-white tracking-wide">Generate Farmer Invoice Transaction</h1>
           </div>
-          <h1 className="text-2xl md:text-3xl font-bold text-gray-800">Generate Invoice</h1>
-        </div>
-      </div>
-
-      <form onSubmit={handleSubmit} className="grid grid-cols-1 xl:grid-cols-3 gap-8">
-        {/* Left: Invoice Form */}
-        <div className="xl:col-span-2 space-y-6">
-          <div className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100">
-            {/* Farmer & Billing Type */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6 mb-8 sm:mb-10">
-              <div>
-                <label className={labelClasses}>Select Farmer</label>
-                <div className="relative group">
-                  <User className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-green-600 transition-colors" size={18} />
-                  <select
-                    value={formData.farmerId}
-                    onChange={(e) => setFormData({ ...formData, farmerId: e.target.value })}
-                    className={inputClasses}
-                    required
-                  >
-                    <option value="">Choose Farmer</option>
-                    {farmers?.map((f) => (
-                      <option key={f._id} value={f._id}>{f.name} ({f.village || "No Area Location"})</option>
-                    ))}
-                  </select>
-                </div>
-              </div>
-
-              <div>
-                <label className={labelClasses}>Billing Type Matrix</label>
-                <div className="relative group">
-                  <CreditCard className="absolute left-3.5 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-green-600 transition-colors" size={18} />
-                  <select
-                    value={formData.billingType}
-                    onChange={(e) => setFormData({ ...formData, billingType: e.target.value })}
-                    className={inputClasses}
-                  >
-                    <option value="cash">Retail - Cash Price</option>
-                    <option value="credit">Retail - Credit Price</option>
-                    <option value="wholesale">Wholesale - Cash Price</option>
-                    <option value="wholesale_credit">Wholesale - Credit Price</option>
-                  </select>
-                </div>
-              </div>
-            </div>
-
-            {/* Product Selection Table */}
-            <div className="space-y-4">
-              <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-2 gap-4">
-                <h3 className="text-base sm:text-lg font-bold text-gray-800 flex items-center gap-2">
-                  <ShoppingCart size={20} className="text-green-600" />
-                  Product Selection
-                </h3>
-                <button
-                  type="button"
-                  onClick={addProductRow}
-                  className="flex items-center justify-center sm:justify-start gap-2 text-green-600 font-bold text-sm hover:bg-green-50 px-4 py-2 rounded-xl transition-all border border-green-100 sm:border-none"
-                >
-                  <Plus size={18} />
-                  Add Product
-                </button>
-              </div>
-
-              <div className="overflow-x-auto">
-                <table className="w-full min-w-full text-left">
-                  <thead>
-                    <tr className="text-slate-600 text-[10px] uppercase font-bold tracking-widest border-b border-gray-100 whitespace-nowrap">
-                      <th className="py-4 px-2 min-w-[200px]">Product Name</th>
-                      <th className="py-4 px-2 min-w-[100px]">Rate</th>
-                      <th className="py-4 px-2 min-w-[100px]">Qty</th>
-                      <th className="py-4 px-2 min-w-[100px]">Tax</th>
-                      <th className="py-4 px-2 text-right min-w-[120px]">Amount</th>
-                      <th className="py-4 px-2 text-right"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formData.products.map((item, index) => (
-                      <ProductRow
-                        key={index}
-                        product={{ ...item, productsList }}
-                        index={index}
-                        handleChange={handleProductChange}
-                        removeProduct={removeProductRow}
-                        billingType={formData.billingType}
-                      />
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          </div>
+          <span className="text-emerald-100 font-medium text-sm px-3 py-1 bg-emerald-800/40 rounded-full border border-emerald-500/30">
+            Enterprise Module
+          </span>
         </div>
 
-        {/* Right: Summary & Action */}
-        <div className="xl:col-span-1 space-y-6">
-          <div className="bg-white p-5 sm:p-8 rounded-2xl sm:rounded-3xl shadow-sm border border-gray-100 sticky top-8">
-            <h3 className="text-lg sm:text-xl font-bold text-gray-800 mb-6 sm:mb-8 flex items-center gap-2">
-              <Calculator size={22} className="text-green-600" />
-              Invoice Summary
-            </h3>
+        {/* Dynamic Context Feedback Alerts */}
+        {uiFeedback.error && (
+          <div className="m-6 p-4 bg-red-50 border-l-4 border-red-500 rounded flex items-center space-x-3 text-red-700">
+            <AlertTriangle className="h-5 w-5 text-red-500 flex-shrink-0" />
+            <p className="text-sm font-medium">{uiFeedback.error}</p>
+          </div>
+        )}
+        {uiFeedback.success && (
+          <div className="m-6 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded text-emerald-700 text-sm font-medium">
+            {uiFeedback.success}
+          </div>
+        )}
 
-            <div className="space-y-4">
-              <div className="flex justify-between items-center text-slate-700">
-                <span className="font-medium text-sm">Subtotal</span>
-                <span className="font-bold text-gray-800">₹{summary.subTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-              <div className="flex justify-between items-center text-slate-700">
-                <span className="font-medium text-sm">Total Tax (GST)</span>
-                <span className="font-bold text-gray-800">₹{summary.totalGST.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-              </div>
-              
-              <div className="h-px bg-gray-50 w-full my-6"></div>
-              
-              <div className="flex justify-between items-center">
-                <span className="font-black text-gray-800">Grand Total</span>
-                <div className="flex flex-col items-end">
-                  <span className="text-2xl sm:text-3xl font-black text-green-700">₹{summary.grandTotal.toLocaleString(undefined, { minimumFractionDigits: 2 })}</span>
-                  <span className="text-[10px] text-slate-600 font-bold uppercase tracking-wider">Inclusive of all taxes</span>
-                </div>
-              </div>
+        <form onSubmit={handleFormSubmission} className="p-6 space-y-8">
+          
+          {/* SECTION A: REGISTRY PROFILE METRICS AND METADATA */}
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                <User className="h-4 w-4 mr-1 text-slate-500" /> Select Farmer Profile
+              </label>
+              <select
+                value={selectedFarmerId}
+                onChange={(e) => setSelectedFarmerId(e.target.value)}
+                className="w-full rounded-md border border-slate-300 p-2.5 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                required
+              >
+                <option value="">-- Choose Profile Record --</option>
+                {farmers.map((farmer) => (
+                  <option key={farmer._id} value={farmer._id}>
+                    {farmer.name} ({farmer.village || "No Village Profile Data"})
+                  </option>
+                ))}
+              </select>
             </div>
 
-            <div className={`mt-8 sm:mt-10 p-4 rounded-2xl flex items-start gap-3 border ${badgeProps.wrapper}`}>
-              <ShieldCheck size={20} className="shrink-0 mt-0.5" />
-              <div className="text-xs font-bold leading-relaxed">
-                Billing configuration set to <span className="uppercase font-black">{formData.billingType.replace('_', ' ')}</span>. {badgeProps.text}
+            <div>
+              <label className="block text-sm font-semibold text-slate-700 mb-2 flex items-center">
+                <Layers className="h-4 w-4 mr-1 text-slate-500" /> Billing Category Matrix
+              </label>
+              <select
+                value={billingType}
+                onChange={(e) => setBillingType(e.target.value)}
+                className="w-full rounded-md border border-slate-300 p-2.5 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+              >
+                <option value="cash">Cash Settlement (Standard Rate)</option>
+                <option value="credit">Deferred Credit (Premium Rate)</option>
+                <option value="wholesale">Bulk Wholesale (Discounted Cash)</option>
+                <option value="wholesale_credit">Bulk Wholesale Credit (Mixed Terms)</option>
+              </select>
+            </div>
+
+            {billingType.includes("credit") && (
+              <div className="animate-fadeIn">
+                <label className="block text-sm font-semibold text-slate-700 mb-2">
+                  Ledger Maturity Due Date
+                </label>
+                <input
+                  type="date"
+                  value={dueDate}
+                  onChange={(e) => setDueDate(e.target.value)}
+                  className="w-full rounded-md border border-slate-300 p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                  required
+                />
               </div>
+            )}
+          </div>
+
+          <hr className="border-slate-200" />
+
+          {/* SECTION B: LINE ITEM DYNAMIC DATA ENTRY LOOP */}
+          <div>
+            <h2 className="text-lg font-bold text-slate-800 mb-4">Line Item Inventories Allocation</h2>
+            <div className="space-y-3">
+              {invoiceItems.map((item, index) => (
+                <div key={index} className="flex flex-col md:flex-row items-start md:items-center space-y-2 md:space-y-0 md:space-x-3 p-4 bg-slate-50 rounded-lg border border-slate-200">
+                  
+                  <div className="w-full md:flex-1">
+                    <select
+                      value={item.product}
+                      onChange={(e) => handleItemRowChange(index, "product", e.target.value)}
+                      className="w-full rounded-md border border-slate-300 p-2 bg-white text-sm focus:ring-2 focus:ring-emerald-500"
+                      required
+                    >
+                      <option value="">-- Choose Stock Allocation --</option>
+                      {productsPool.map((prod) => (
+                        <option key={prod._id} value={prod._id}>
+                          {prod.productName} (Avail: {prod.quantity})
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="w-full md:w-28">
+                    <input
+                      type="number"
+                      min="1"
+                      placeholder="Qty"
+                      value={item.quantity}
+                      onChange={(e) => handleItemRowChange(index, "quantity", e.target.value)}
+                      className="w-full rounded-md border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-emerald-500 text-center"
+                      required
+                    />
+                  </div>
+
+                  <div className="w-full md:w-32 bg-white border border-slate-200 p-2 rounded text-sm text-center text-slate-600 font-medium">
+                    Rate: ₹{item.selectedRate || 0}
+                  </div>
+
+                  <div className="w-full md:w-24 bg-white border border-slate-200 p-2 rounded text-sm text-center text-slate-600 font-medium flex items-center justify-center">
+                    <Percent className="h-3 w-3 mr-0.5 text-slate-400" /> {item.gstRate || 0}%
+                  </div>
+
+                  <div className="w-full md:w-36 bg-emerald-50 border border-emerald-200 p-2 rounded text-sm text-center text-emerald-800 font-bold">
+                    ₹{item.totalAmount || 0}
+                  </div>
+
+                  {invoiceItems.length > 1 && (
+                    <button
+                      type="button"
+                      onClick={() => removeLineItemRow(index)}
+                      className="text-red-500 hover:text-red-700 p-2 hover:bg-red-50 rounded-full transition-colors flex-shrink-0 mx-auto md:mx-0"
+                    >
+                      <Trash2 className="h-5 w-5" />
+                    </button>
+                  )}
+                </div>
+              ))}
             </div>
 
             <button
-              type="submit"
-              disabled={loading || summary.grandTotal <= 0}
-              className="w-full mt-6 sm:mt-8 bg-green-600 hover:bg-green-700 text-white py-4 rounded-2xl font-black text-base sm:text-lg transition-all shadow-xl shadow-green-100 disabled:opacity-50 active:scale-95 flex items-center justify-center gap-3"
+              type="button"
+              onClick={addNewLineItemRow}
+              className="mt-3 inline-flex items-center space-x-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700 px-3 py-1.5 hover:bg-emerald-50 rounded transition-all"
             >
-              {loading ? "Generating..." : (
-                <>
-                  <Building2 size={20} />
-                  Confirm & Generate Bill
-                </>
-              )}
+              <Plus className="h-4 w-4" /> <span>Add Another Row Item</span>
             </button>
           </div>
-        </div>
-      </form>
+
+          <hr className="border-slate-200" />
+
+          {/* SECTION C: FINAL SETTLEMENT SUMMATION VIEW LEDGER */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
+            <div className="p-4 bg-slate-100 rounded-lg border border-slate-200 text-xs text-slate-500 space-y-1">
+              <p className="font-bold uppercase tracking-wider text-slate-600 mb-1">System Architecture Guards Check</p>
+              <p>• Selecting Credit structures shifts payment flags automatically to "Pending".</p>
+              <p>• Stock changes run within transactional boundaries to prevent database locks.</p>
+              <p>• Precision numeric parameters resolve floating calculations inside currency displays.</p>
+            </div>
+
+            <div className="bg-slate-900 text-white p-5 rounded-xl space-y-3.5 border border-slate-800">
+              <div className="flex justify-between text-sm text-slate-400 font-medium">
+                <span>Aggregate Subtotal</span>
+                <span>₹{financials.subTotal}</span>
+              </div>
+              <div className="flex justify-between text-sm text-slate-400 font-medium">
+                <span>Accumulated GST Breakdown</span>
+                <span>+ ₹{financials.totalGST}</span>
+              </div>
+              <hr className="border-slate-800" />
+              <div className="flex justify-between items-center text-lg font-bold text-emerald-400">
+                <span>Grand Total Payable</span>
+                <span className="text-2xl">₹{financials.grandTotal}</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Action Trigger Submit Button */}
+          <div className="flex justify-end pt-4">
+            <button
+              type="submit"
+              disabled={uiFeedback.loading}
+              className={`px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold tracking-wide text-sm rounded-lg shadow transition-all transform hover:-translate-y-0.5 active:translate-y-0 ${
+                uiFeedback.loading ? "opacity-60 cursor-not-allowed" : ""
+              }`}
+            >
+              {uiFeedback.loading ? "Processing Ledger Writes..." : "Commit Invoice Configuration"}
+            </button>
+          </div>
+
+        </form>
+      </div>
     </div>
   );
 };

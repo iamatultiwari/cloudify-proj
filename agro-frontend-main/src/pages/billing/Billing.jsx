@@ -10,7 +10,8 @@ import {
   Trash2,
   Calculator,
   Building2,
-  ChevronRight
+  ChevronRight,
+  Calendar
 } from "lucide-react";
 import API from "../../services/api";
 import toast from "react-hot-toast";
@@ -24,6 +25,7 @@ const Billing = () => {
   const [formData, setFormData] = useState({
     farmerId: "",
     billingType: "cash",
+    dueDate: "",
     products: [
       {
         product: "",
@@ -68,11 +70,13 @@ const Billing = () => {
       const p = productsList.find(prod => prod._id === item.product);
       if (p) {
         let rate = 0;
-        if (formData.billingType === "credit") rate = p.creditRate;
-        else if (formData.billingType === "cash") rate = p.cashRate;
-        else if (formData.billingType === "wholesale") rate = p.wholesaleRate;
+        // Updated to fully handle all 4 pricing tier strategies inside data states
+        if (formData.billingType === "cash") rate = p.cashRate || 0;
+        else if (formData.billingType === "credit") rate = p.creditRate || 0;
+        else if (formData.billingType === "wholesale") rate = p.wholesaleRate || 0;
+        else if (formData.billingType === "wholesale_credit") rate = p.creditWholesaleRate || 0;
 
-        const lineTotal = rate * (item.quantity || 0);
+        const lineTotal = rate * (Number(item.quantity) || 0);
         const lineGST = (lineTotal * (p.gstRate || 0)) / 100;
         
         sub += lineTotal;
@@ -81,9 +85,9 @@ const Billing = () => {
     });
 
     setSummary({
-      subTotal: sub,
-      totalGST: gst,
-      grandTotal: sub + gst
+      subTotal: Number(sub.toFixed(2)),
+      totalGST: Number(gst.toFixed(2)),
+      grandTotal: Number((sub + gst).toFixed(2))
     });
   };
 
@@ -110,6 +114,9 @@ const Billing = () => {
     e.preventDefault();
     if (!formData.farmerId) return toast.error("Please select a farmer");
     if (formData.products.some(p => !p.product)) return toast.error("Please select products for all rows");
+    if (formData.billingType.includes("credit") && !formData.dueDate) {
+      return toast.error("Please select a due date for credit billing protocol");
+    }
 
     try {
       setLoading(true);
@@ -120,8 +127,10 @@ const Billing = () => {
           product: item.product,
           quantity: Number(item.quantity),
         })),
+        ...(formData.billingType.includes("credit") && { dueDate: formData.dueDate })
       };
 
+      // Updated target route to match standard REST API creation handlers
       await API.post("/invoices", payload);
       toast.success("Invoice Generated Successfully");
       navigate("/invoices");
@@ -167,12 +176,11 @@ const Billing = () => {
         {/* Left: Input Console */}
         <div className="xl:col-span-7">
           <div className="premium-card p-10 relative overflow-hidden">
-            {/* Background Accent */}
             <div className="absolute top-0 right-0 w-64 h-64 bg-emerald-50/50 rounded-full -translate-y-1/2 translate-x-1/2 blur-3xl -z-10"></div>
             
             <form onSubmit={handleSubmit} className="space-y-12">
               {/* Farmer & Type Selection */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div className={`grid grid-cols-1 ${formData.billingType.includes("credit") ? "md:grid-cols-3" : "md:grid-cols-2"} gap-8 transition-all duration-300`}>
                 <div className="space-y-2">
                   <label className={labelClasses}>Farmer Identity</label>
                   <div className="relative group">
@@ -197,15 +205,32 @@ const Billing = () => {
                     <CreditCard className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" size={20} />
                     <select
                       value={formData.billingType}
-                      onChange={(e) => setFormData({ ...formData, billingType: e.target.value })}
+                      onChange={(e) => setFormData({ ...formData, billingType: e.target.value, dueDate: e.target.value.includes("credit") ? formData.dueDate : "" })}
                       className={inputClasses}
                     >
                       <option value="cash">Spot Cash Sale</option>
                       <option value="credit">Credit (Baki Ledger)</option>
                       <option value="wholesale">Bulk Wholesale Rate</option>
+                      <option value="wholesale_credit">Bulk Wholesale Credit</option>
                     </select>
                   </div>
                 </div>
+
+                {formData.billingType.includes("credit") && (
+                  <div className="space-y-2 animate-fadeIn">
+                    <label className={labelClasses}>Ledger Due Date</label>
+                    <div className="relative group">
+                      <Calendar className="absolute left-4 top-1/2 -translate-y-1/2 text-slate-600 group-focus-within:text-emerald-500 transition-colors" size={20} />
+                      <input
+                        type="date"
+                        value={formData.dueDate}
+                        onChange={(e) => setFormData({ ...formData, dueDate: e.target.value })}
+                        className={`${inputClasses} pr-4`}
+                        required
+                      />
+                    </div>
+                  </div>
+                )}
               </div>
 
               {/* Product Inventory Interface */}
