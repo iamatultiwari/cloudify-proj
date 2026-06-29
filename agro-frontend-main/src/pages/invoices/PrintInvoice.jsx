@@ -231,30 +231,150 @@ const PrintInvoice = () => {
         `}} />
 
         <div className="invoice-box">
-          {/* ================= COMPACT LOGISTICAL HEADER ================= */}
-          <div className="text-center py-2 border-b-dark bg-slate-50/50">
-            <input 
-              className="inline-editable text-center text-2xl font-black tracking-wider font-serif mb-1"
-              value={companySettings?.companyName || ""}
-              onChange={(e) => handleCompanyChange("companyName", e.target.value)}
-              placeholder="Company Name"
+
+
+
+
+
+
+
+
+{/* ===================== AGRO ERP HEADER ===================== */}
+<div className="bg-gradient-to-r from-green-50 via-white to-lime-50 border-b-4 border-green-700 rounded-t-xl px-10 py-8">
+
+  <div className="flex justify-between items-center">
+
+    {/* Company Details */}
+    <div>
+
+      <div className="flex items-center gap-4">
+
+        {/* Simple Agriculture Icon */}
+        <div className="w-16 h-16 rounded-full bg-green-700 flex items-center justify-center shadow-md">
+          <span className="text-3xl">🌾</span>
+        </div>
+
+        <div>
+
+          <input
+            className="inline-editable bg-transparent border-none outline-none text-5xl font-black tracking-wide uppercase text-green-800"
+            value={companySettings?.companyName || "AGRO ERP"}
+            onChange={(e) =>
+              handleCompanyChange("companyName", e.target.value)
+            }
+          />
+
+          <input
+            className="inline-editable bg-transparent border-none outline-none text-xl font-semibold text-green-600 italic mt-1"
+            value={companySettings?.tagline || "Premium Enterprise"}
+            onChange={(e) =>
+              handleCompanyChange("tagline", e.target.value)
+            }
+          />
+
+        </div>
+
+      </div>
+
+      <div className="mt-5 h-[3px] w-44 rounded-full bg-gradient-to-r from-green-700 to-lime-500"></div>
+
+      <div className="mt-4 text-gray-700 space-y-2">
+
+        <input
+          className="inline-editable bg-transparent border-none outline-none text-base font-medium w-[500px]"
+          value={
+            companySettings?.address ||
+            "Bhawarkua, Indore, Madhya Pradesh - 452001"
+          }
+          onChange={(e) =>
+            handleCompanyChange("address", e.target.value)
+          }
+        />
+
+        <div className="flex gap-10 text-sm">
+
+          <div>
+            <span className="font-semibold text-gray-900">
+              Contact
+            </span>
+
+            <br />
+
+            <input
+              className="inline-editable bg-transparent border-none outline-none font-medium"
+              value={
+                companySettings?.mobileNumber ||
+                "8966079583"
+              }
+              onChange={(e) =>
+                handleCompanyChange("mobileNumber", e.target.value)
+              }
             />
-            <input 
-              className="inline-editable text-center text-[11px] font-semibold text-slate-800"
-              value={companySettings?.address || ""}
-              onChange={(e) => handleCompanyChange("address", e.target.value)}
-              placeholder="Company Address"
-            />
-            <div className="flex justify-center items-center gap-1 text-[11px] font-semibold mt-0.5">
-              <span>Mobile:</span>
-              <input 
-                className="inline-editable w-40 text-left font-bold"
-                value={companySettings?.mobileNumber || companySettings?.mobile || ""}
-                onChange={(e) => handleCompanyChange("mobileNumber", e.target.value)}
-                placeholder="Mobile Record Number"
-              />
-            </div>
           </div>
+
+          <div>
+            <span className="font-semibold text-gray-900">
+              Email
+            </span>
+
+            <br />
+
+            <input
+              className="inline-editable bg-transparent border-none outline-none font-medium w-56"
+              value={
+                companySettings?.email ||
+                "support@agroerp.com"
+              }
+              onChange={(e) =>
+                handleCompanyChange("email", e.target.value)
+              }
+            />
+          </div>
+
+        </div>
+
+      </div>
+
+    </div>
+
+    {/* Right Decorative Section */}
+    <div className="text-right">
+
+      <div className="text-green-700 text-7xl opacity-20 select-none">
+        🌿
+      </div>
+
+    </div>
+
+  </div>
+
+</div>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
           {/* ================= COMPLIANCE & PROTOCOL TRACKS ================= */}
           <div className="grid grid-cols-4 text-[10px] font-bold border-b-dark bg-white divide-x divide-black">
