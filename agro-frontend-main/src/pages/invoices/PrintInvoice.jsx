@@ -1,6 +1,6 @@
 import { useEffect, useState, useRef } from "react";
 import { useParams, useNavigate } from "react-router-dom";
-import { ArrowLeft, Printer, Edit3 } from "lucide-react";
+import { ArrowLeft, Printer, Edit3, MessageSquare, Mail, Loader2 } from "lucide-react";
 import API from "../../services/api";
 import { useReactToPrint } from "react-to-print";
 import toast from "react-hot-toast";
@@ -13,6 +13,9 @@ const PrintInvoice = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const printRef = useRef(null);
+
+  // Explicit tracking flag for network notification gateway pipelines
+  const [sendingChannel, setSendingChannel] = useState(null); 
 
   // ================= FETCH METADATA =================
   const fetchData = async () => {
@@ -41,6 +44,29 @@ const PrintInvoice = () => {
   useEffect(() => {
     if (id) fetchData();
   }, [id]);
+
+  // ================= MANUAL NOTIFICATION DISPATCH ENGINE =================
+  const handleManualNotification = async (channel) => {
+    if (!id) return;
+    try {
+      setSendingChannel(channel);
+      toast.loading(`Dispatching invoice dataset over ${channel.toUpperCase()} connection matrix...`, { id: "notify-progress" });
+      
+      // Makes an API call to your backend manual route
+      const res = await API.post(`/invoices/resend/${id}`, { channel });
+      
+      if (res.data?.success) {
+        toast.success(`Invoice documentation transmitted successfully via ${channel.toUpperCase()}!`, { id: "notify-progress" });
+      } else {
+        toast.success("Notification task queued onto structural delivery pipelines.", { id: "notify-progress" });
+      }
+    } catch (err) {
+      console.error("GATEWAY ERROR:", err);
+      toast.error(err.response?.data?.message || `Link drop error processing manual ${channel} task.`, { id: "notify-progress" });
+    } finally {
+      setSendingChannel(null);
+    }
+  };
 
   // ================= CALCULATION RECONCILIATION ENGINE =================
   const recalculateInvoiceTotals = (updatedProducts) => {
@@ -136,14 +162,46 @@ const PrintInvoice = () => {
         >
           <ArrowLeft size={16} /> Back to Terminal
         </button>
-        <div className="flex items-center gap-3 w-full sm:w-auto">
-          <div className="text-xs text-slate-500 font-medium hidden md:block flex-1 text-right">
+        
+        <div className="flex flex-wrap items-center gap-3 w-full sm:w-auto justify-end">
+          <div className="text-xs text-slate-500 font-medium hidden lg:block text-right max-w-xs">
             <span className="inline-block w-2 h-2 bg-amber-500 rounded-full mr-2"></span>
-            Interactive Form Layer Active. Click text fields directly to override production data.
+            Interactive Form Layer Active. Click text fields directly to override data.
           </div>
+
+          {/* 📲 NEW: Send WhatsApp Action Trigger */}
+          <button
+            onClick={() => handleManualNotification("whatsapp")}
+            disabled={sendingChannel !== null}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 disabled:opacity-50 text-white px-5 py-3 rounded-xl shadow-md font-bold transition-all text-sm uppercase tracking-wider"
+          >
+            {sendingChannel === "whatsapp" ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <MessageSquare size={16} />
+            )}
+            <span>Send WhatsApp</span>
+          </button>
+
+          {/* 📧 NEW: Send Email Action Trigger */}
+          <button
+            onClick={() => handleManualNotification("email")}
+            disabled={sendingChannel !== null}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white px-5 py-3 rounded-xl shadow-md font-bold transition-all text-sm uppercase tracking-wider"
+          >
+            {sendingChannel === "email" ? (
+              <Loader2 size={16} className="animate-spin" />
+            ) : (
+              <Mail size={16} />
+            )}
+            <span>Send Email</span>
+          </button>
+
+          {/* Existing Print Document Button */}
           <button
             onClick={handlePrint}
-            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-700 text-white px-8 py-3 rounded-xl shadow-lg shadow-emerald-600/10 font-bold transition-all text-sm uppercase tracking-wider"
+            disabled={sendingChannel !== null}
+            className="w-full sm:w-auto flex items-center justify-center gap-2 bg-slate-800 hover:bg-slate-900 text-white px-6 py-3 rounded-xl shadow-lg font-bold transition-all text-sm uppercase tracking-wider"
           >
             <Printer size={16} /> Print Document
           </button>

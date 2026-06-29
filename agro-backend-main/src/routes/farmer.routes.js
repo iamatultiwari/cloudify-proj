@@ -8,6 +8,7 @@ import {
   deleteFarmer,
   searchFarmer,
 } from "../controllers/farmer.controller.js";
+//import { sendEmailNotification } from '../controllers/notification.controller.js';
 
 import authMiddleware from "../middleware/auth.middleware.js";
 
@@ -18,6 +19,8 @@ const router = express.Router();
 // add farmer
 
 router.post("/", authMiddleware, addFarmer);
+
+//router.post('/send-email', sendEmailNotification);
 
 
 // get all farmers

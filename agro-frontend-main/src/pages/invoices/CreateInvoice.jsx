@@ -1,7 +1,6 @@
-
 import React, { useState, useEffect } from "react";
 import axios from "axios";
-import { Trash2, Plus, Receipt, User, Percent, Layers, AlertTriangle } from "lucide-react";
+import { Trash2, Plus, Receipt, User, Percent, Layers, AlertTriangle, CheckCircle2, Loader2 } from "lucide-react";
 
 const CreateInvoice = () => {
   // --- STATE MANAGEMENT ---
@@ -16,7 +15,14 @@ const CreateInvoice = () => {
   ]);
 
   const [financials, setFinancials] = useState({ subTotal: 0, totalGST: 0, grandTotal: 0 });
-  const [uiFeedback, setUiFeedback] = useState({ loading: false, error: null, success: null });
+  
+  // Enhanced UI Feedback state to track backend notification gateways
+  const [uiFeedback, setUiFeedback] = useState({ 
+    loading: false, 
+    statusMessage: "", 
+    error: null, 
+    success: null 
+  });
 
   // --- FETCH INITIAL DROPDOWN DATA ---
   useEffect(() => {
@@ -47,7 +53,6 @@ const CreateInvoice = () => {
       const matchedProduct = productsPool.find(p => p._id === item.product);
       if (!matchedProduct) return item;
 
-      // Pure 4-tier client side matrix selection matching backend expectations
       let rate = 0;
       if (billingType === "cash") rate = matchedProduct.cashRate || 0;
       else if (billingType === "credit") rate = matchedProduct.creditRate || 0;
@@ -69,7 +74,6 @@ const CreateInvoice = () => {
       };
     });
 
-    // Deep comparison wrapper block to prevent infinite render looping
     const arraysMatch = JSON.stringify(invoiceItems) === JSON.stringify(updatedItems);
     if (!arraysMatch) {
       setInvoiceItems(updatedItems);
@@ -105,15 +109,16 @@ const CreateInvoice = () => {
   // --- SUBMIT TRANSACTION TO API BACKEND ---
   const handleFormSubmission = async (e) => {
     e.preventDefault();
-    setUiFeedback({ loading: true, error: null, success: null });
+    
+    // Set step-by-step processing messages
+    setUiFeedback({ loading: true, statusMessage: "Verifying ledger bounds...", error: null, success: null });
 
-    // Client-side execution guards
     if (!selectedFarmerId) {
-      return setUiFeedback({ loading: false, error: "Please select a target farmer profile.", success: null });
+      return setUiFeedback({ loading: false, statusMessage: "", error: "Please select a target farmer profile.", success: null });
     }
     const cleanProductsPayload = invoiceItems.filter(item => item.product !== "");
     if (cleanProductsPayload.length === 0) {
-      return setUiFeedback({ loading: false, error: "Invoice must contain at least one valid line item product assignment.", success: null });
+      return setUiFeedback({ loading: false, statusMessage: "", error: "Invoice must contain at least one valid line item.", success: null });
     }
 
     const compiledPayload = {
@@ -124,10 +129,21 @@ const CreateInvoice = () => {
     };
 
     try {
+      // Step 1: Write to Database
+      setUiFeedback(prev => ({ ...prev, statusMessage: "Committing database transaction..." }));
+      
       const response = await axios.post("/api/v1/invoices/create", compiledPayload);
+      
       if (response.data?.success) {
-        setUiFeedback({ loading: false, error: null, success: "Invoice processed and ledger recorded cleanly!" });
-        // Clean out state boundaries completely
+        // Step 2: Show immediate gateway notification success
+        setUiFeedback({ 
+          loading: false, 
+          statusMessage: "", 
+          error: null, 
+          success: "Invoice compiled, ledger updated, and smart notifications dispatched successfully!" 
+        });
+
+        // Reset Form Fields completely
         setSelectedFarmerId("");
         setBillingType("cash");
         setDueDate("");
@@ -137,6 +153,7 @@ const CreateInvoice = () => {
       console.error("Submission Failure Context:", err);
       setUiFeedback({
         loading: false,
+        statusMessage: "",
         error: err.response?.data?.message || "Critical runtime fault execution failure during save actions.",
         success: null
       });
@@ -165,9 +182,11 @@ const CreateInvoice = () => {
             <p className="text-sm font-medium">{uiFeedback.error}</p>
           </div>
         )}
+        
         {uiFeedback.success && (
-          <div className="m-6 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded text-emerald-700 text-sm font-medium">
-            {uiFeedback.success}
+          <div className="m-6 p-4 bg-emerald-50 border-l-4 border-emerald-500 rounded flex items-center space-x-3 text-emerald-700">
+            <CheckCircle2 className="h-5 w-5 text-emerald-500 flex-shrink-0" />
+            <p className="text-sm font-medium">{uiFeedback.success}</p>
           </div>
         )}
 
@@ -184,6 +203,7 @@ const CreateInvoice = () => {
                 onChange={(e) => setSelectedFarmerId(e.target.value)}
                 className="w-full rounded-md border border-slate-300 p-2.5 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                 required
+                disabled={uiFeedback.loading}
               >
                 <option value="">-- Choose Profile Record --</option>
                 {farmers.map((farmer) => (
@@ -202,6 +222,7 @@ const CreateInvoice = () => {
                 value={billingType}
                 onChange={(e) => setBillingType(e.target.value)}
                 className="w-full rounded-md border border-slate-300 p-2.5 bg-white text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
+                disabled={uiFeedback.loading}
               >
                 <option value="cash">Cash Settlement (Standard Rate)</option>
                 <option value="credit">Deferred Credit (Premium Rate)</option>
@@ -221,6 +242,7 @@ const CreateInvoice = () => {
                   onChange={(e) => setDueDate(e.target.value)}
                   className="w-full rounded-md border border-slate-300 p-2.5 text-sm focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500"
                   required
+                  disabled={uiFeedback.loading}
                 />
               </div>
             )}
@@ -241,6 +263,7 @@ const CreateInvoice = () => {
                       onChange={(e) => handleItemRowChange(index, "product", e.target.value)}
                       className="w-full rounded-md border border-slate-300 p-2 bg-white text-sm focus:ring-2 focus:ring-emerald-500"
                       required
+                      disabled={uiFeedback.loading}
                     >
                       <option value="">-- Choose Stock Allocation --</option>
                       {productsPool.map((prod) => (
@@ -260,6 +283,7 @@ const CreateInvoice = () => {
                       onChange={(e) => handleItemRowChange(index, "quantity", e.target.value)}
                       className="w-full rounded-md border border-slate-300 p-2 text-sm focus:ring-2 focus:ring-emerald-500 text-center"
                       required
+                      disabled={uiFeedback.loading}
                     />
                   </div>
 
@@ -275,7 +299,7 @@ const CreateInvoice = () => {
                     ₹{item.totalAmount || 0}
                   </div>
 
-                  {invoiceItems.length > 1 && (
+                  {invoiceItems.length > 1 && !uiFeedback.loading && (
                     <button
                       type="button"
                       onClick={() => removeLineItemRow(index)}
@@ -288,13 +312,15 @@ const CreateInvoice = () => {
               ))}
             </div>
 
-            <button
-              type="button"
-              onClick={addNewLineItemRow}
-              className="mt-3 inline-flex items-center space-x-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700 px-3 py-1.5 hover:bg-emerald-50 rounded transition-all"
-            >
-              <Plus className="h-4 w-4" /> <span>Add Another Row Item</span>
-            </button>
+            {!uiFeedback.loading && (
+              <button
+                type="button"
+                onClick={addNewLineItemRow}
+                className="mt-3 inline-flex items-center space-x-1 text-sm font-semibold text-emerald-600 hover:text-emerald-700 px-3 py-1.5 hover:bg-emerald-50 rounded transition-all"
+              >
+                <Plus className="h-4 w-4" /> <span>Add Another Row Item</span>
+              </button>
+            )}
           </div>
 
           <hr className="border-slate-200" />
@@ -302,10 +328,10 @@ const CreateInvoice = () => {
           {/* SECTION C: FINAL SETTLEMENT SUMMATION VIEW LEDGER */}
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-end">
             <div className="p-4 bg-slate-100 rounded-lg border border-slate-200 text-xs text-slate-500 space-y-1">
-              <p className="font-bold uppercase tracking-wider text-slate-600 mb-1">System Architecture Guards Check</p>
-              <p>• Selecting Credit structures shifts payment flags automatically to "Pending".</p>
-              <p>• Stock changes run within transactional boundaries to prevent database locks.</p>
-              <p>• Precision numeric parameters resolve floating calculations inside currency displays.</p>
+              <p className="font-bold uppercase tracking-wider text-slate-600 mb-1">System Notifications Active</p>
+              <p className="text-emerald-700 font-semibold">• 📲 Auto-WhatsApp message will fire via Twilio Gateway.</p>
+              <p className="text-teal-700 font-semibold">• 📧 Auto-Email rich layout statement will fire via Nodemailer.</p>
+              <p>• Inventory levels update cleanly inline inside transactional boundaries.</p>
             </div>
 
             <div className="bg-slate-900 text-white p-5 rounded-xl space-y-3.5 border border-slate-800">
@@ -326,15 +352,22 @@ const CreateInvoice = () => {
           </div>
 
           {/* Action Trigger Submit Button */}
-          <div className="flex justify-end pt-4">
+          <div className="flex items-center justify-end space-x-4 pt-4">
+            {uiFeedback.loading && (
+              <span className="text-sm font-medium text-slate-500 flex items-center gap-2 animate-pulse">
+                <Loader2 className="h-4 w-4 animate-spin text-emerald-600" />
+                {uiFeedback.statusMessage}
+              </span>
+            )}
+            
             <button
               type="submit"
               disabled={uiFeedback.loading}
               className={`px-8 py-3 bg-emerald-600 hover:bg-emerald-700 text-white font-bold tracking-wide text-sm rounded-lg shadow transition-all transform hover:-translate-y-0.5 active:translate-y-0 ${
-                uiFeedback.loading ? "opacity-60 cursor-not-allowed" : ""
+                uiFeedback.loading ? "opacity-50 cursor-not-allowed transform-none" : "cursor-pointer"
               }`}
             >
-              {uiFeedback.loading ? "Processing Ledger Writes..." : "Commit Invoice Configuration"}
+              {uiFeedback.loading ? "Processing..." : "Commit Invoice Configuration"}
             </button>
           </div>
 

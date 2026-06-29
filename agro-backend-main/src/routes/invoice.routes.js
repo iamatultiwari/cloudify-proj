@@ -1,7 +1,7 @@
 import express from "express";
 
 import authMiddleware from "../middleware/auth.middleware.js";
-
+import { resendInvoice } from '../controllers/invoice.controller.js'; 
 import {
   createInvoice,
   getAllInvoices,
@@ -50,5 +50,7 @@ router.get(
   authMiddleware,
   printInvoice
 );
+
+router.post('/resend/:id', resendInvoice);
 
 export default router;

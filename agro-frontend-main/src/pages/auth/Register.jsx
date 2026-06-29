@@ -1,25 +1,3 @@
-// import { useEffect } from "react";
-// import { useNavigate } from "react-router-dom";
-
-// const Register = () => {
-//   const navigate = useNavigate();
-
-//   useEffect(() => {
-//     // For a single-user system, registration is disabled
-//     navigate("/login");
-//   }, [navigate]);
-
-//   return (
-//     <div className="min-h-screen flex justify-center items-center bg-slate-50 px-4 py-10 font-sans">
-//       <p className="text-slate-600 font-bold">Redirecting...</p>
-//     </div>
-//   );
-// };
-
-// export default Register;
-
-
-
 import { useState, useContext } from "react";
 import { AuthContext } from "../../context/AuthContext";
 import { useNavigate, Link } from "react-router-dom";
@@ -32,6 +10,7 @@ const Register = () => {
   const [formData, setFormData] = useState({
     name: "",
     email: "",
+    district: "", // 1. Added to state
     password: "",
     confirmPassword: "",
   });
@@ -55,9 +34,11 @@ const Register = () => {
     try {
       setLoading(true);
 
+      // 2. Included district in the payload sent to your context
       await register({
         name: formData.name,
         email: formData.email,
+        district: formData.district, 
         password: formData.password,
       });
 
@@ -65,8 +46,7 @@ const Register = () => {
       navigate("/login");
     } catch (error) {
       toast.error(
-        error.response?.data?.message ||
-          "Registration Failed"
+        error.response?.data?.message || "Registration Failed"
       );
     } finally {
       setLoading(false);
@@ -76,9 +56,7 @@ const Register = () => {
   return (
     <div className="min-h-screen flex justify-center items-center bg-slate-100 px-4">
       <div className="w-full max-w-md bg-white shadow-lg rounded-xl p-8">
-        <h1 className="text-3xl font-bold text-center mb-6">
-          Register
-        </h1>
+        <h1 className="text-3xl font-bold text-center mb-6">Register</h1>
 
         <form onSubmit={handleSubmit} className="space-y-4">
           <input
@@ -96,6 +74,17 @@ const Register = () => {
             name="email"
             placeholder="Email"
             value={formData.email}
+            onChange={handleChange}
+            className="w-full border rounded-lg p-3"
+            required
+          />
+
+          {/* 3. Added District Input Field */}
+          <input
+            type="text"
+            name="district"
+            placeholder="District"
+            value={formData.district}
             onChange={handleChange}
             className="w-full border rounded-lg p-3"
             required
@@ -129,16 +118,7 @@ const Register = () => {
             {loading ? "Registering..." : "Register"}
           </button>
         </form>
-
-        <p className="text-center mt-4">
-          Already have an account?{" "}
-          <Link
-            to="/login"
-            className="text-green-600 font-semibold"
-          >
-            Login
-          </Link>
-        </p>
+        {/* ... login link stays the same ... */}
       </div>
     </div>
   );

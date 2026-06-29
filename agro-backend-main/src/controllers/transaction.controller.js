@@ -2,67 +2,37 @@ import Transaction from "../models/Transaction.js";
 import Farmer from "../models/Farmer.js";
 import Product from "../models/Product.js";
 
-
-
 // ================= CREDIT ENTRY =================
-
 export const createCreditTransaction = async (req, res) => {
   try {
-    const {
-      farmerId,
-      amount,
-      description,
-      dueDate,
-      products,
-    } = req.body;
-
-    // farmer check
+    const { farmerId, amount, description, dueDate, products } = req.body;
 
     const farmer = await Farmer.findById(farmerId);
-
     if (!farmer) {
-      return res.status(404).json({
-        message: "Farmer not found",
-      });
+      return res.status(404).json({ success: false, message: "Farmer profile not found." });
     }
 
-    // credit limit warning
-
+    // Credit limit warning assertion
     if (farmer.dueAmount + amount > farmer.creditLimit) {
-      return res.status(400).json({
-        message: "Credit Limit Exceeded",
-      });
+      return res.status(400).json({ success: false, message: "Transaction blocked: Credit Limit Exceeded" });
     }
 
-    // inventory deduction
-
+    // Atomic inventory verification & deduction loop
     if (products && products.length > 0) {
       for (const item of products) {
         const product = await Product.findById(item.product);
-
         if (!product) {
-          return res.status(404).json({
-            message: "Product not found",
-          });
+          return res.status(404).json({ success: false, message: "Product context missing inside inventory database." });
         }
-
-        // stock check
 
         if (product.quantity < item.quantity) {
-          return res.status(400).json({
-            message: `${product.productName} out of stock`,
-          });
+          return res.status(400).json({ success: false, message: `${product.productName} contains insufficient stock volumes.` });
         }
 
-        // deduct stock
-
         product.quantity -= item.quantity;
-
         await product.save();
       }
     }
-
-    // create transaction
 
     const transaction = await Transaction.create({
       farmer: farmerId,
@@ -73,54 +43,32 @@ export const createCreditTransaction = async (req, res) => {
       products,
     });
 
-    // update due amount
-
     farmer.dueAmount += amount;
-
     await farmer.save();
 
     res.status(201).json({
       success: true,
-      message: "Credit Transaction Added",
+      message: "Credit Transaction recorded and posted successfully.",
       transaction,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
 // ================= PAYMENT ENTRY =================
-
 export const createPaymentTransaction = async (req, res) => {
   try {
-    const {
-      farmerId,
-      amount,
-      paymentMode,
-      description,
-    } = req.body;
+    const { farmerId, amount, paymentMode, description } = req.body;
 
     const farmer = await Farmer.findById(farmerId);
-
     if (!farmer) {
-      return res.status(404).json({
-        message: "Farmer not found",
-      });
+      return res.status(404).json({ success: false, message: "Farmer record not found." });
     }
-
-    // due check
 
     if (amount > farmer.dueAmount) {
-      return res.status(400).json({
-        message: "Payment exceeds due amount",
-      });
+      return res.status(400).json({ success: false, message: "Payment amount cannot exceed outstanding balance due." });
     }
-
-    // create payment transaction
 
     const transaction = await Transaction.create({
       farmer: farmerId,
@@ -130,45 +78,28 @@ export const createPaymentTransaction = async (req, res) => {
       description,
     });
 
-    // reduce due amount
-
     farmer.dueAmount -= amount;
-
     await farmer.save();
 
     res.status(201).json({
       success: true,
-      message: "Payment Added Successfully",
+      message: "Payment posted successfully; farmer ledger balance adjusted.",
       transaction,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
 // ================= INTEREST ENTRY =================
-
 export const createInterestTransaction = async (req, res) => {
   try {
-    const {
-      farmerId,
-      amount,
-      description,
-    } = req.body;
+    const { farmerId, amount, description } = req.body;
 
     const farmer = await Farmer.findById(farmerId);
-
     if (!farmer) {
-      return res.status(404).json({
-        message: "Farmer not found",
-      });
+      return res.status(404).json({ success: false, message: "Farmer record not found." });
     }
-
-    // create interest transaction
 
     const transaction = await Transaction.create({
       farmer: farmerId,
@@ -177,28 +108,20 @@ export const createInterestTransaction = async (req, res) => {
       description,
     });
 
-    // add due amount
-
     farmer.dueAmount += amount;
-
     await farmer.save();
 
     res.status(201).json({
       success: true,
-      message: "Interest Added Successfully",
+      message: "Accrued interest added successfully to the ledger accounts.",
       transaction,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
 // ================= TRANSACTION HISTORY =================
-
 export const getTransactionHistory = async (req, res) => {
   try {
     const transactions = await Transaction.find()
@@ -212,31 +135,21 @@ export const getTransactionHistory = async (req, res) => {
       transactions,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
 // ================= FARMER LEDGER =================
-
 export const getFarmerLedger = async (req, res) => {
   try {
     const farmerId = req.params.id;
 
     const farmer = await Farmer.findById(farmerId);
-
     if (!farmer) {
-      return res.status(404).json({
-        message: "Farmer not found",
-      });
+      return res.status(404).json({ success: false, message: "Target farmer identifier not found." });
     }
 
-    const ledger = await Transaction.find({
-      farmer: farmerId,
-    })
+    const ledger = await Transaction.find({ farmer: farmerId })
       .sort({ createdAt: -1 })
       .populate("products.product");
 
@@ -247,29 +160,18 @@ export const getFarmerLedger = async (req, res) => {
       ledger,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
   }
 };
 
-
-
 // ================= SEARCH & FILTER =================
-
 export const searchTransactions = async (req, res) => {
   try {
     const { type, paymentMode } = req.query;
-
     let filter = {};
 
-    if (type) {
-      filter.type = type;
-    }
-
-    if (paymentMode) {
-      filter.paymentMode = paymentMode;
-    }
+    if (type) filter.type = type;
+    if (paymentMode) filter.paymentMode = paymentMode;
 
     const transactions = await Transaction.find(filter)
       .populate("farmer")
@@ -281,8 +183,20 @@ export const searchTransactions = async (req, res) => {
       transactions,
     });
   } catch (error) {
-    res.status(500).json({
-      message: error.message,
-    });
+    res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+
+
+export const getInterestHistory = async (req, res) => {
+  try {
+    const interestRecords = await Transaction.find({ type: "interest" })
+      .populate("farmer")
+      .sort({ createdAt: -1 });
+    
+    res.status(200).json({ success: true, transactions: interestRecords });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
   }
 };
