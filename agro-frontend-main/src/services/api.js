@@ -1,7 +1,7 @@
 import axios from "axios";
 
 const API = axios.create({
-  baseURL: "https://your-backend-service-name.onrender.com/api", 
+  baseURL: "https://cloudify-proj-backend.onrender.com", 
 });
 
 API.interceptors.request.use((req) => {
