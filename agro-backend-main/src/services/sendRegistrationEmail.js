@@ -32,7 +32,6 @@ export const sendRegistrationEmail = async (userEmail, userName, userDistrict) =
           </table>
           <br>
           <p>Your registration was completed successfully.</p>
-          <p>You can now purchase products, generate invoices and manage your transactions.</p>
           <hr>
           <p>Regards,<br>Agro ERP Team</p>
         </div>
